@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <meta charset="UTF-8">
+    <title>設定</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        padding: 20px;
+      }
+
+      .setting-group {
+        margin-bottom: 20px;
+      }
+
+      label {
+        display: block;
+        margin-bottom: 5px;
+        font-weight: bold;
+      }
+
+      input, textarea {
+        width: 100%;
+        padding: 8px;
+        margin-bottom: 10px;
+      }
+
+      button {
+        padding: 10px 20px;
+        margin-right: 10px;
+      }
+    </style>
+  </head>
+  <body>
+    <h2>設定</h2>
+
+    <div class="setting-group">
+      <label>設定項目</label>
+      <input type="text" id="setting-input" placeholder="設定値を入力">
+    </div>
+
+    <button onclick="saveSetting()">保存</button>
+    <button onclick="google.script.host.close()">閉じる</button>
+
+    <script>
+      function saveSetting() {
+        // 設定保存のロジックをここに追加
+        google.script.host.close();
+      }
+    </script>
+  </body>
+</html>
