@@ -167,6 +167,9 @@ function loadDriveFilesToSheet() {
       return { success: true, fileCount: 0 };
     }
 
+    // 送信済みファイルIDを取得
+    const sentFileIds = getSentFileIds();
+
     // データを配列に変換（選択列にはfalseを設定）
     const data = files.map(file => [
       false, // 選択チェックボックス
@@ -178,7 +181,7 @@ function loadDriveFilesToSheet() {
       file.url,
       file.createdTime,
       file.updatedTime,
-      '' // Notion送信済みフラグ
+      sentFileIds.has(file.fileId) ? '送信済み' : '' // ログシートから送信済みステータスを取得
     ]);
 
     // データを書き込み
@@ -254,6 +257,9 @@ function refreshDriveFiles() {
       idRange.forEach(row => existingIds.add(row[0]));
     }
 
+    // 送信済みファイルIDを取得
+    const sentFileIds = getSentFileIds();
+
     // 新規ファイルを追加
     let addedCount = 0;
     for (const file of files) {
@@ -268,7 +274,7 @@ function refreshDriveFiles() {
           file.url,
           file.createdTime,
           file.updatedTime,
-          ''
+          sentFileIds.has(file.fileId) ? '送信済み' : '' // ログシートから送信済みステータスを取得
         ];
         const rowNum = sheet.getLastRow() + 1;
         sheet.appendRow(newRow);
@@ -306,20 +312,23 @@ function getSelectedRowsData() {
     return [];
   }
 
-  const selectColumn = SHEET_HEADERS.indexOf('選択') + 1;
   const dataRange = sheet.getRange(2, 1, lastRow - 1, SHEET_HEADERS.length).getValues();
+
+  // 送信済みファイルIDをログシートから取得
+  const sentFileIds = getSentFileIds();
 
   const filesData = [];
 
   for (let i = 0; i < dataRange.length; i++) {
     const rowData = dataRange[i];
     const isSelected = rowData[0] === true;
+    const fileId = rowData[1];
 
     if (isSelected) {
       filesData.push({
         row: i + 2,
         selected: rowData[0],
-        fileId: rowData[1],
+        fileId: fileId,
         fileName: rowData[2],
         fileType: rowData[3],
         size: rowData[4],
@@ -327,7 +336,7 @@ function getSelectedRowsData() {
         url: rowData[6],
         createdTime: formatToISO(rowData[7]),
         updatedTime: formatToISO(rowData[8]),
-        notionSent: rowData[9]
+        notionSent: sentFileIds.has(fileId) // ログシートから判定
       });
     }
   }
@@ -438,19 +447,205 @@ function getFileListStats() {
   const dataRange = sheet.getRange(2, 1, lastRow - 1, SHEET_HEADERS.length).getValues();
 
   const selectIdx = SHEET_HEADERS.indexOf('選択');
-  const notionIdx = SHEET_HEADERS.indexOf('Notion送信済み');
+  const idIdx = SHEET_HEADERS.indexOf('ID');
+
+  // 送信済みファイルIDをログシートから取得
+  const sentFileIds = getSentFileIds();
 
   let selected = 0;
   let sentToNotion = 0;
 
   for (const row of dataRange) {
     if (row[selectIdx] === true) selected++;
-    if (row[notionIdx]) sentToNotion++;
+    if (sentFileIds.has(row[idIdx])) sentToNotion++;
   }
 
   return {
     total: dataRange.length,
     selected: selected,
     sentToNotion: sentToNotion
+  };
+}
+
+// ========================================
+// 送信履歴シート管理
+// ========================================
+
+/**
+ * 送信履歴シートを取得または作成
+ * @returns {Sheet} - シートオブジェクト
+ */
+function getOrCreateLogSheet() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName(LOG_SHEET_NAME);
+
+  if (!sheet) {
+    sheet = ss.insertSheet(LOG_SHEET_NAME);
+
+    // ヘッダー行を設定
+    sheet.getRange(1, 1, 1, LOG_HEADERS.length).setValues([LOG_HEADERS]);
+    sheet.getRange(1, 1, 1, LOG_HEADERS.length)
+      .setBackground('#34a853')
+      .setFontColor('#ffffff')
+      .setFontWeight('bold');
+
+    // ヘッダー行を固定
+    sheet.setFrozenRows(1);
+
+    // 列幅を調整
+    sheet.setColumnWidth(1, 150); // 送信日時
+    sheet.setColumnWidth(2, 200); // ファイルID
+    sheet.setColumnWidth(3, 250); // ファイル名
+    sheet.setColumnWidth(4, 200); // Notion Page ID
+    sheet.setColumnWidth(5, 300); // Notion URL
+    sheet.setColumnWidth(6, 80);  // ステータス
+    sheet.setColumnWidth(7, 300); // エラー詳細
+  }
+
+  return sheet;
+}
+
+/**
+ * 送信履歴を追加
+ * @param {Object} logEntry - ログエントリ
+ * @returns {boolean} - 成功可否
+ */
+function addSendLog(logEntry) {
+  try {
+    const sheet = getOrCreateLogSheet();
+    const now = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy/MM/dd HH:mm:ss');
+
+    const row = [
+      now,
+      logEntry.fileId || '',
+      logEntry.fileName || '',
+      logEntry.notionPageId || '',
+      logEntry.notionUrl || '',
+      logEntry.status || '成功',
+      logEntry.error || ''
+    ];
+
+    sheet.appendRow(row);
+
+    // Notion URLをハイパーリンクに設定
+    if (logEntry.notionUrl) {
+      const lastRow = sheet.getLastRow();
+      const urlColumn = LOG_HEADERS.indexOf('Notion URL') + 1;
+      sheet.getRange(lastRow, urlColumn).setFormula('=HYPERLINK("' + logEntry.notionUrl + '", "開く")');
+    }
+
+    return true;
+  } catch (error) {
+    console.error('ログ追加エラー:', error);
+    return false;
+  }
+}
+
+/**
+ * 送信済みファイルIDのセットを取得
+ * @returns {Set} - 送信済みファイルIDのセット
+ */
+function getSentFileIds() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(LOG_SHEET_NAME);
+
+  if (!sheet) {
+    return new Set();
+  }
+
+  const lastRow = sheet.getLastRow();
+  if (lastRow <= 1) {
+    return new Set();
+  }
+
+  const fileIdColumn = LOG_HEADERS.indexOf('ファイルID') + 1;
+  const statusColumn = LOG_HEADERS.indexOf('ステータス') + 1;
+
+  const data = sheet.getRange(2, 1, lastRow - 1, LOG_HEADERS.length).getValues();
+
+  const sentIds = new Set();
+  for (const row of data) {
+    // ステータスが「成功」のもののみ
+    if (row[statusColumn - 1] === '成功') {
+      sentIds.add(row[fileIdColumn - 1]);
+    }
+  }
+
+  return sentIds;
+}
+
+/**
+ * ファイルIDが送信済みかどうかを確認
+ * @param {string} fileId - ファイルID
+ * @returns {boolean} - 送信済みかどうか
+ */
+function isFileSentToNotion(fileId) {
+  const sentIds = getSentFileIds();
+  return sentIds.has(fileId);
+}
+
+/**
+ * ファイル一覧シートの送信済みステータスをログシートから更新
+ */
+function syncNotionStatusFromLog() {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('ファイル一覧');
+  if (!sheet) return;
+
+  const lastRow = sheet.getLastRow();
+  if (lastRow <= 1) return;
+
+  const sentFileIds = getSentFileIds();
+  const idColumn = SHEET_HEADERS.indexOf('ID') + 1;
+  const notionColumn = SHEET_HEADERS.indexOf('Notion送信済み') + 1;
+
+  const ids = sheet.getRange(2, idColumn, lastRow - 1, 1).getValues();
+  const statuses = [];
+
+  for (const row of ids) {
+    if (sentFileIds.has(row[0])) {
+      statuses.push(['送信済み']);
+    } else {
+      statuses.push(['']);
+    }
+  }
+
+  sheet.getRange(2, notionColumn, lastRow - 1, 1).setValues(statuses);
+}
+
+/**
+ * 送信履歴の統計情報を取得
+ * @returns {Object} - 統計情報
+ */
+function getLogStats() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(LOG_SHEET_NAME);
+
+  if (!sheet) {
+    return { total: 0, success: 0, failed: 0 };
+  }
+
+  const lastRow = sheet.getLastRow();
+  if (lastRow <= 1) {
+    return { total: 0, success: 0, failed: 0 };
+  }
+
+  const statusColumn = LOG_HEADERS.indexOf('ステータス') + 1;
+  const statuses = sheet.getRange(2, statusColumn, lastRow - 1, 1).getValues();
+
+  let success = 0;
+  let failed = 0;
+
+  for (const row of statuses) {
+    if (row[0] === '成功') {
+      success++;
+    } else {
+      failed++;
+    }
+  }
+
+  return {
+    total: lastRow - 1,
+    success: success,
+    failed: failed
   };
 }

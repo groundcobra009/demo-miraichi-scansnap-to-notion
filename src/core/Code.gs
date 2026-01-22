@@ -173,17 +173,15 @@ function menuSendToNotion() {
 
   try {
     const results = sendFilesToNotion(filesToSend);
-
-    // 送信成功したファイルのステータスを更新
-    for (const file of filesToSend) {
-      updateNotionStatus(file.row, '送信済み');
-    }
+    // 送信済みステータスはsendFilesToNotion内でログシートに記録され、
+    // syncNotionStatusFromLogで自動更新されます
 
     ui.alert(
       '送信完了',
       `Notionへの送信が完了しました。\n\n` +
       `成功: ${results.success}件\n` +
-      `失敗: ${results.failed}件`,
+      `失敗: ${results.failed}件\n\n` +
+      `送信履歴は「送信履歴」シートで確認できます。`,
       ui.ButtonSet.OK
     );
 
@@ -213,14 +211,9 @@ function sendSelectedFilesToNotion() {
     return { success: 0, failed: 0, errors: [] };
   }
 
-  const results = sendFilesToNotion(filesToSend);
-
-  // 送信成功したファイルのステータスを更新
-  for (const file of filesToSend) {
-    updateNotionStatus(file.row, '送信済み');
-  }
-
-  return results;
+  // 送信済みステータスはsendFilesToNotion内でログシートに記録され、
+  // syncNotionStatusFromLogで自動更新されます
+  return sendFilesToNotion(filesToSend);
 }
 
 /**

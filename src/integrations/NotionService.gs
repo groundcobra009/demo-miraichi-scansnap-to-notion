@@ -97,7 +97,7 @@ function createNotionDatabase() {
         '容量': {
           rich_text: {}
         },
-        'リンク': {
+        'Google Driveリンク': {
           url: {}
         },
         '作成日時': {
@@ -130,8 +130,30 @@ function createNotionDatabase() {
   }
 }
 
+// ========================================
+// ページ作成（PDF埋め込み対応）
+// ========================================
+
 /**
- * Notionデータベースにページ（レコード）を追加
+ * Google DriveファイルのプレビューURLを取得
+ * @param {string} fileId - ファイルID
+ * @returns {string} - プレビューURL
+ */
+function getGoogleDrivePreviewUrl(fileId) {
+  return 'https://drive.google.com/file/d/' + fileId + '/preview';
+}
+
+/**
+ * Google Driveファイルの埋め込みURLを取得
+ * @param {string} fileId - ファイルID
+ * @returns {string} - 埋め込みURL
+ */
+function getGoogleDriveEmbedUrl(fileId) {
+  return 'https://drive.google.com/file/d/' + fileId + '/view';
+}
+
+/**
+ * Notionデータベースにページを追加（PDF埋め込み対応）
  * @param {Object} fileData - ファイルデータ
  * @returns {Object} - 作成結果
  */
@@ -144,7 +166,104 @@ function addPageToNotion(fileData) {
 
   try {
     const fileType = getFileTypeCategory(fileData.mimeType);
+    const embedUrl = getGoogleDriveEmbedUrl(fileData.fileId);
 
+    // ページ本体のコンテンツブロックを作成（PDF埋め込み）
+    const children = [];
+
+    // ファイル情報のヘッダー
+    children.push({
+      object: 'block',
+      type: 'heading_2',
+      heading_2: {
+        rich_text: [{
+          type: 'text',
+          text: { content: 'ファイルプレビュー' }
+        }]
+      }
+    });
+
+    // PDF/画像の埋め込み
+    children.push({
+      object: 'block',
+      type: 'embed',
+      embed: {
+        url: embedUrl
+      }
+    });
+
+    // ファイル情報セクション
+    children.push({
+      object: 'block',
+      type: 'heading_3',
+      heading_3: {
+        rich_text: [{
+          type: 'text',
+          text: { content: 'ファイル情報' }
+        }]
+      }
+    });
+
+    // ファイル詳細をテーブルで表示
+    children.push({
+      object: 'block',
+      type: 'bulleted_list_item',
+      bulleted_list_item: {
+        rich_text: [{
+          type: 'text',
+          text: { content: 'ファイルID: ' + fileData.fileId }
+        }]
+      }
+    });
+
+    children.push({
+      object: 'block',
+      type: 'bulleted_list_item',
+      bulleted_list_item: {
+        rich_text: [{
+          type: 'text',
+          text: { content: 'ファイル形式: ' + fileType }
+        }]
+      }
+    });
+
+    children.push({
+      object: 'block',
+      type: 'bulleted_list_item',
+      bulleted_list_item: {
+        rich_text: [{
+          type: 'text',
+          text: { content: '容量: ' + (fileData.size || '不明') }
+        }]
+      }
+    });
+
+    // Google Driveへのリンク
+    children.push({
+      object: 'block',
+      type: 'divider',
+      divider: {}
+    });
+
+    children.push({
+      object: 'block',
+      type: 'paragraph',
+      paragraph: {
+        rich_text: [{
+          type: 'text',
+          text: {
+            content: 'Google Driveで開く',
+            link: { url: fileData.url }
+          },
+          annotations: {
+            bold: true,
+            color: 'blue'
+          }
+        }]
+      }
+    });
+
+    // ページを作成
     const payload = {
       parent: {
         database_id: databaseId
@@ -182,7 +301,7 @@ function addPageToNotion(fileData) {
             }
           ]
         },
-        'リンク': {
+        'Google Driveリンク': {
           url: fileData.url || null
         },
         '作成日時': {
@@ -196,18 +315,27 @@ function addPageToNotion(fileData) {
             name: '未処理'
           }
         }
-      }
+      },
+      children: children
     };
 
     const result = notionRequest('/pages', 'POST', payload);
-    return { success: true, pageId: result.id };
+
+    // Notion URLを生成
+    const notionUrl = 'https://www.notion.so/' + result.id.replace(/-/g, '');
+
+    return {
+      success: true,
+      pageId: result.id,
+      notionUrl: notionUrl
+    };
   } catch (error) {
     return { success: false, error: error.message };
   }
 }
 
 /**
- * 複数のファイルをNotionに送信
+ * 複数のファイルをNotionに送信（ログ記録対応）
  * @param {Array} filesData - ファイルデータの配列
  * @returns {Object} - 送信結果
  */
@@ -220,6 +348,18 @@ function sendFilesToNotion(filesData) {
 
   for (const fileData of filesData) {
     const result = addPageToNotion(fileData);
+
+    // ログシートに記録
+    const logEntry = {
+      fileId: fileData.fileId,
+      fileName: fileData.fileName,
+      notionPageId: result.pageId || '',
+      notionUrl: result.notionUrl || '',
+      status: result.success ? '成功' : '失敗',
+      error: result.error || ''
+    };
+    addSendLog(logEntry);
+
     if (result.success) {
       results.success++;
     } else {
@@ -230,6 +370,9 @@ function sendFilesToNotion(filesData) {
       });
     }
   }
+
+  // ファイル一覧シートの送信済みステータスを更新
+  syncNotionStatusFromLog();
 
   return results;
 }
