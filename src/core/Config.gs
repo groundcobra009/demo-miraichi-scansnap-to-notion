@@ -16,6 +16,7 @@ const PROPERTY_KEYS = {
 };
 
 const SHEET_HEADERS = [
+  '選択',
   'ID',
   'ファイル名',
   'ファイル形式',
