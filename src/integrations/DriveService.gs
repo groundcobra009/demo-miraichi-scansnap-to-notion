@@ -167,8 +167,9 @@ function loadDriveFilesToSheet() {
       return { success: true, fileCount: 0 };
     }
 
-    // データを配列に変換
+    // データを配列に変換（選択列にはfalseを設定）
     const data = files.map(file => [
+      false, // 選択チェックボックス
       file.fileId,
       file.fileName,
       file.fileType,
@@ -183,8 +184,13 @@ function loadDriveFilesToSheet() {
     // データを書き込み
     sheet.getRange(2, 1, data.length, SHEET_HEADERS.length).setValues(data);
 
+    // 選択列にチェックボックスを設定
+    const selectColumn = SHEET_HEADERS.indexOf('選択') + 1;
+    sheet.getRange(2, selectColumn, data.length, 1).insertCheckboxes();
+
     // 列幅を調整
-    sheet.autoResizeColumns(1, SHEET_HEADERS.length);
+    sheet.setColumnWidth(selectColumn, 50); // 選択列は狭く
+    sheet.autoResizeColumns(2, SHEET_HEADERS.length - 1);
 
     // リンク列をハイパーリンクに設定
     const linkColumn = SHEET_HEADERS.indexOf('リンク先') + 1;
@@ -195,6 +201,9 @@ function loadDriveFilesToSheet() {
         cell.setFormula('=HYPERLINK("' + url + '", "開く")');
       }
     }
+
+    // ヘッダー行を固定
+    sheet.setFrozenRows(1);
 
     return { success: true, fileCount: files.length };
   } catch (error) {
@@ -227,14 +236,21 @@ function getOrCreateDataSheet() {
 function refreshDriveFiles() {
   try {
     const files = getFilesFromFolder();
-    const sheet = getOrCreateDataSheet();
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    let sheet = ss.getSheetByName('ファイル一覧');
+
+    // シートがない場合は新規作成
+    if (!sheet) {
+      return loadDriveFilesToSheet();
+    }
 
     // 既存のファイルIDを取得
     const lastRow = sheet.getLastRow();
     const existingIds = new Set();
+    const idColumn = SHEET_HEADERS.indexOf('ID') + 1;
 
     if (lastRow > 1) {
-      const idRange = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
+      const idRange = sheet.getRange(2, idColumn, lastRow - 1, 1).getValues();
       idRange.forEach(row => existingIds.add(row[0]));
     }
 
@@ -243,6 +259,7 @@ function refreshDriveFiles() {
     for (const file of files) {
       if (!existingIds.has(file.fileId)) {
         const newRow = [
+          false, // 選択チェックボックス
           file.fileId,
           file.fileName,
           file.fileType,
@@ -253,7 +270,13 @@ function refreshDriveFiles() {
           file.updatedTime,
           ''
         ];
+        const rowNum = sheet.getLastRow() + 1;
         sheet.appendRow(newRow);
+
+        // チェックボックスを設定
+        const selectColumn = SHEET_HEADERS.indexOf('選択') + 1;
+        sheet.getRange(rowNum, selectColumn).insertCheckboxes();
+
         addedCount++;
       }
     }
@@ -269,7 +292,7 @@ function refreshDriveFiles() {
 }
 
 /**
- * 選択行のファイル情報を取得
+ * チェックボックスで選択された行のファイル情報を取得
  * @returns {Array} - 選択されたファイル情報の配列
  */
 function getSelectedRowsData() {
@@ -278,42 +301,91 @@ function getSelectedRowsData() {
     return [];
   }
 
-  const selection = sheet.getActiveRange();
-  if (!selection) {
+  const lastRow = sheet.getLastRow();
+  if (lastRow <= 1) {
     return [];
   }
 
-  const startRow = selection.getRow();
-  const numRows = selection.getNumRows();
-
-  // ヘッダー行は除外
-  if (startRow === 1 && numRows === 1) {
-    return [];
-  }
+  const selectColumn = SHEET_HEADERS.indexOf('選択') + 1;
+  const dataRange = sheet.getRange(2, 1, lastRow - 1, SHEET_HEADERS.length).getValues();
 
   const filesData = [];
-  const actualStartRow = startRow === 1 ? 2 : startRow;
-  const actualNumRows = startRow === 1 ? numRows - 1 : numRows;
 
-  for (let i = 0; i < actualNumRows; i++) {
-    const row = actualStartRow + i;
-    const rowData = sheet.getRange(row, 1, 1, SHEET_HEADERS.length).getValues()[0];
+  for (let i = 0; i < dataRange.length; i++) {
+    const rowData = dataRange[i];
+    const isSelected = rowData[0] === true;
 
-    filesData.push({
-      row: row,
-      fileId: rowData[0],
-      fileName: rowData[1],
-      fileType: rowData[2],
-      size: rowData[3],
-      mimeType: rowData[4],
-      url: rowData[5],
-      createdTime: formatToISO(rowData[6]),
-      updatedTime: formatToISO(rowData[7]),
-      notionSent: rowData[8]
-    });
+    if (isSelected) {
+      filesData.push({
+        row: i + 2,
+        selected: rowData[0],
+        fileId: rowData[1],
+        fileName: rowData[2],
+        fileType: rowData[3],
+        size: rowData[4],
+        mimeType: rowData[5],
+        url: rowData[6],
+        createdTime: formatToISO(rowData[7]),
+        updatedTime: formatToISO(rowData[8]),
+        notionSent: rowData[9]
+      });
+    }
   }
 
   return filesData;
+}
+
+/**
+ * 選択されたファイルの件数を取得
+ * @returns {number} - 選択件数
+ */
+function getSelectedCount() {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('ファイル一覧');
+  if (!sheet) {
+    return 0;
+  }
+
+  const lastRow = sheet.getLastRow();
+  if (lastRow <= 1) {
+    return 0;
+  }
+
+  const selectColumn = SHEET_HEADERS.indexOf('選択') + 1;
+  const selectRange = sheet.getRange(2, selectColumn, lastRow - 1, 1).getValues();
+
+  return selectRange.filter(row => row[0] === true).length;
+}
+
+/**
+ * 全ての選択をクリア
+ */
+function clearAllSelections() {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('ファイル一覧');
+  if (!sheet) return;
+
+  const lastRow = sheet.getLastRow();
+  if (lastRow <= 1) return;
+
+  const selectColumn = SHEET_HEADERS.indexOf('選択') + 1;
+  const range = sheet.getRange(2, selectColumn, lastRow - 1, 1);
+  const values = range.getValues().map(() => [false]);
+  range.setValues(values);
+}
+
+/**
+ * 全てを選択
+ */
+function selectAll() {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('ファイル一覧');
+  if (!sheet) return;
+
+  const lastRow = sheet.getLastRow();
+  if (lastRow <= 1) return;
+
+  const selectColumn = SHEET_HEADERS.indexOf('選択') + 1;
+  const range = sheet.getRange(2, selectColumn, lastRow - 1, 1);
+  const values = range.getValues().map(() => [true]);
+  range.setValues(values);
 }
 
 /**
@@ -341,5 +413,44 @@ function updateNotionStatus(row, status) {
   if (sheet) {
     const notionColumn = SHEET_HEADERS.indexOf('Notion送信済み') + 1;
     sheet.getRange(row, notionColumn).setValue(status);
+
+    // 送信後は選択を解除
+    const selectColumn = SHEET_HEADERS.indexOf('選択') + 1;
+    sheet.getRange(row, selectColumn).setValue(false);
   }
+}
+
+/**
+ * ファイル一覧の統計情報を取得
+ * @returns {Object} - 統計情報
+ */
+function getFileListStats() {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('ファイル一覧');
+  if (!sheet) {
+    return { total: 0, selected: 0, sentToNotion: 0 };
+  }
+
+  const lastRow = sheet.getLastRow();
+  if (lastRow <= 1) {
+    return { total: 0, selected: 0, sentToNotion: 0 };
+  }
+
+  const dataRange = sheet.getRange(2, 1, lastRow - 1, SHEET_HEADERS.length).getValues();
+
+  const selectIdx = SHEET_HEADERS.indexOf('選択');
+  const notionIdx = SHEET_HEADERS.indexOf('Notion送信済み');
+
+  let selected = 0;
+  let sentToNotion = 0;
+
+  for (const row of dataRange) {
+    if (row[selectIdx] === true) selected++;
+    if (row[notionIdx]) sentToNotion++;
+  }
+
+  return {
+    total: dataRange.length,
+    selected: selected,
+    sentToNotion: sentToNotion
+  };
 }

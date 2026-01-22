@@ -1,368 +1,156 @@
-# Google Apps Script プロジェクトテンプレート
+# ScanSnap to Notion
 
-このテンプレートは、Google Apps Scriptプロジェクトを効率的に開発するための基盤を提供します。
+Google Driveのスキャンファイルをスプレッドシートで管理し、Notionデータベースに送信するGoogle Apps Scriptアプリケーション。
 
-GitHub Actionsによる自動デプロイ機能を備えており、`main`ブランチへのプッシュで自動的にGoogle Apps Scriptへデプロイされます。
+## 機能
 
----
+- **Google Driveフォルダの読み込み**: 指定フォルダ内のファイル一覧をスプレッドシートに展開
+- **ファイル名の同期**: スプレッドシートでファイル名を変更すると、Google Driveの実ファイル名も自動で変更
+- **Notion連携**: 選択したファイルをNotionデータベースに送信
+- **サイドバーUI**: 各種操作をサイドバーから簡単に実行
+- **初期設定ウィザード**: ステップバイステップで初期設定
 
-## 📁 プロジェクト構造
+## スプレッドシートのカラム構成
 
-```
-.
-├── .github/
-│   └── workflows/
-│       ├── deploy-gas.yml      # GitHub Actionsワークフロー
-│       └── README.md           # ワークフローの詳細説明
-├── src/
-│   ├── appsscript.json         # GAS設定ファイル
-│   ├── core/
-│   │   ├── Code.gs             # メインロジック
-│   │   └── Config.gs           # プロジェクト設定
-│   ├── integrations/
-│   │   └── ExternalService.gs  # 外部サービス連携
-│   └── ui/
-│       ├── Sidebar.html        # サイドバーUI
-│       └── dialogs/
-│           ├── SettingsDialog.html  # 設定ダイアログ
-│           └── HelpDialog.html      # ヘルプダイアログ
-├── docs/
-│   └── context.md              # プロジェクト要件定義書
-├── .clasp.json                 # clasp設定（スクリプトID）
-├── .claspignore                # claspデプロイ除外設定
-└── README.md                   # このファイル
-```
+| 選択 | ID | ファイル名 | ファイル形式 | 容量 | MIME Type | リンク先 | 作成日時 | 更新日時 | Notion送信済み |
+|------|-----|-----------|-------------|------|-----------|---------|---------|---------|--------------|
+| チェックボックス | ファイルID | 編集可能 | 拡張子 | サイズ | MIMEタイプ | リンク | 作成日 | 更新日 | ステータス |
 
----
+## セットアップ
 
-## 🚀 セットアップ手順
-
-### 1. このテンプレートを使用
-
-1. GitHubで「Use this template」ボタンをクリック
-2. 新しいリポジトリ名を入力して作成
-3. ローカルにクローン
+### 1. デプロイ
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/YOUR_REPO.git
-cd YOUR_REPO
-```
-
-### 2. Google Apps Scriptプロジェクトを作成
-
-#### オプションA: 新規プロジェクトを作成
-
-```bash
-# claspをインストール
-npm install -g @google/clasp
-
-# Googleアカウントでログイン
-clasp login
-
-# 新規GASプロジェクトを作成
-clasp create --type standalone --title "My GAS Project" --rootDir ./src
-```
-
-#### オプションB: 既存プロジェクトに接続
-
-1. Google Apps Scriptの既存プロジェクトを開く
-2. プロジェクト設定からスクリプトIDをコピー
-3. `.clasp.json`を編集してスクリプトIDを設定
-
-```json
-{
-  "scriptId": "YOUR_SCRIPT_ID_HERE",
-  "rootDir": "./src"
-}
-```
-
-### 3. プロジェクトをカスタマイズ
-
-#### 基本設定
-
-- `src/core/Config.gs` - プロジェクトの設定を記述
-- `src/core/Code.gs` - メインロジックを実装
-- `docs/context.md` - プロジェクトの要件定義を記述
-
-#### UI（必要な場合）
-
-- `src/ui/dialogs/SettingsDialog.html` - 設定画面
-- `src/ui/dialogs/HelpDialog.html` - ヘルプ画面
-- `src/ui/Sidebar.html` - サイドバー
-
-#### 外部連携（必要な場合）
-
-- `src/integrations/ExternalService.gs` - 外部API連携
-
-### 4. ローカルでテスト
-
-```bash
-# GASにプッシュ
+# claspでGASにデプロイ
 clasp push
-
-# ブラウザで開く
-clasp open
 ```
 
----
+### 2. 初期設定
 
-## 🤖 GitHub Actionsによる自動デプロイ
+1. スプレッドシートを開く
+2. 初期設定ウィザードが自動で表示される
+3. 以下を設定:
+   - **Google DriveフォルダID**: スキャンファイルが保存されているフォルダのID
+   - **Notion Integration Key**: [Notion Integrations](https://www.notion.so/my-integrations)で作成
+   - **Notion Parent ID**: データベースを作成するNotionページのID
 
-### セットアップ手順
+### 3. ファイル名同期トリガーの有効化
 
-#### 1. Apps Script APIを有効化
+スプレッドシートでファイル名を変更した際にGoogle Driveのファイル名も自動で変更するには、インストール可能なトリガーを有効化する必要があります。
 
-https://script.google.com/home/usersettings にアクセスして「Google Apps Script API」を有効化
+**サイドバーから設定する方法:**
+1. メニュー「ScanSnap to Notion」→「サイドバーを開く」
+2. 「トリガー設定」セクションでトグルをONにする
 
-#### 2. clasp認証情報を取得
+**メニューから設定する方法:**
+1. メニュー「ScanSnap to Notion」→「トリガー設定」→「ファイル名同期を有効化」
 
-ローカル環境で以下のコマンドを実行:
+## 使い方
 
-```bash
-# claspでログイン（未実施の場合）
-clasp login
+### サイドバーから操作（推奨）
 
-# 認証情報をbase64エンコード
-cat ~/.clasprc.json | base64 | tr -d '\n'
+1. メニュー「ScanSnap to Notion」→「サイドバーを開く」
+2. サイドバーから各種操作を実行:
+   - **ファイル一覧を更新**: 新規ファイルのみ追加（差分更新）
+   - **ファイル一覧を再読込**: 全件再取得
+   - **全選択/選択解除**: チェックボックスの一括操作
+   - **選択ファイルをNotionに送信**: チェックしたファイルをNotionに送信
+   - **トリガー設定**: ファイル名同期の有効/無効切り替え
+
+### メニューから操作
+
+メニュー「ScanSnap to Notion」から各機能を実行できます。
+
+## プロジェクト構造
+
+```
+src/
+├── core/
+│   ├── Code.gs           # メイン処理・メニュー・トリガー
+│   └── Config.gs         # 設定管理（PropertiesService）
+├── integrations/
+│   ├── DriveService.gs   # Google Drive連携
+│   └── NotionService.gs  # Notion API連携
+└── ui/
+    ├── Sidebar.html      # サイドバーUI（幅300px）
+    └── dialogs/
+        └── SetupWizard.html  # 初期設定ウィザード
 ```
 
-出力された文字列をコピー
+## 主要な関数
 
-#### 3. GitHub Secretsを設定
+### メニュー・UI
 
-1. GitHubリポジトリの「Settings」→「Secrets and variables」→「Actions」を開く
-2. 「New repository secret」をクリック
-3. 以下のシークレットを追加:
+| 関数名 | 説明 |
+|-------|------|
+| `onOpen()` | メニュー追加・初期設定チェック |
+| `showSidebar()` | サイドバーを表示 |
+| `showSetupWizard()` | 初期設定ウィザードを表示 |
 
-| Name | Value |
-|------|-------|
-| `CLASPRC_JSON_BASE64` | 手順2でコピーしたbase64文字列 |
+### ファイル操作
 
-#### 4. `.clasp.json`の扱い
+| 関数名 | 説明 |
+|-------|------|
+| `loadDriveFilesToSheet()` | フォルダ内ファイルをシートに展開 |
+| `refreshDriveFiles()` | ファイル一覧を差分更新 |
+| `getSelectedRowsData()` | チェックされた行のデータを取得 |
+| `selectAll()` | 全て選択 |
+| `clearAllSelections()` | 選択解除 |
 
-**オプションA: リポジトリに含める（推奨）**
+### Notion連携
 
-`.clasp.json`をリポジトリにコミット（既に含まれています）
+| 関数名 | 説明 |
+|-------|------|
+| `createNotionDatabase()` | Notionにデータベースを作成 |
+| `sendFilesToNotion()` | ファイルをNotionに送信 |
+| `sendSelectedFilesToNotion()` | 選択ファイルをNotionに送信 |
 
-```bash
-git add .clasp.json
-git commit -m "Add clasp config"
-git push
-```
+### トリガー管理
 
-**オプションB: GitHub Secretsで管理**
+| 関数名 | 説明 |
+|-------|------|
+| `isTriggerEnabled()` | トリガーが有効か確認 |
+| `enableEditTrigger()` | ファイル名同期トリガーを有効化 |
+| `disableEditTrigger()` | ファイル名同期トリガーを無効化 |
+| `onEditInstallable()` | 編集時のトリガーハンドラー |
 
-1. `.clasp.json`をGitで管理しない場合は`.gitignore`に追加
-2. GitHub Secretsに`CLASP_JSON`を追加:
+## 注意事項
 
-```json
-{
-  "scriptId": "YOUR_SCRIPT_ID_HERE",
-  "rootDir": "./src"
-}
-```
+### ファイル名同期について
 
-### 自動デプロイの仕組み
+- シンプルトリガー（onEdit）ではDriveAppの権限が不足するため、**インストール可能なトリガー**を使用
+- サイドバーまたはメニューから「ファイル名同期を有効化」を実行する必要がある
+- トリガーの状態はサイドバーで確認可能（有効/無効バッジ表示）
 
-- **トリガー**: `main`ブランチへのプッシュ
-- **処理**: `src/`配下のファイルがGoogle Apps Scriptに自動デプロイ
-- **確認**: GitHubの「Actions」タブでデプロイ状況を確認
+### Notion API制限
 
-#### 手動デプロイ
+- Notion APIには レート制限があります
+- 大量のファイルを一度に送信する場合は注意してください
 
-GitHub Actionsから手動で実行することも可能です:
+### 必要な権限
 
-1. GitHubリポジトリの「Actions」タブを開く
-2. 「Deploy to Google Apps Script」ワークフローを選択
-3. 「Run workflow」ボタンをクリック
+- Google Drive: ファイルの読み取り・名前変更
+- Google Sheets: スプレッドシートの読み書き
+- External Services: Notion APIへのアクセス
 
----
+## トラブルシューティング
 
-## 📝 開発ワークフロー
+### 「DriveApp.getFileById を呼び出すことができません」エラー
 
-### 基本的な流れ
+**原因**: シンプルトリガーでは権限が不足している
 
-```bash
-# 1. 機能開発
-# src/配下のファイルを編集
+**解決方法**:
+1. サイドバーを開く
+2. 「トリガー設定」セクションでトグルをONにする
+3. 権限の承認ダイアログが表示されたら承認する
 
-# 2. ローカルでテスト
-clasp push
-clasp open  # ブラウザでGASエディタを開く
+### Notionにデータベースが作成されない
 
-# 3. コミット & プッシュ
-git add .
-git commit -m "Add new feature"
-git push origin main
+**確認事項**:
+1. Integration KeyがNotionページに接続されているか
+2. Parent IDが正しいか（ページURLの末尾のID）
+3. IntegrationがページにInviteされているか
 
-# 4. 自動デプロイ
-# GitHub Actionsが自動的にGASへデプロイ
-```
+## ライセンス
 
-### ブランチ戦略（推奨）
-
-```bash
-# 開発用ブランチで作業
-git checkout -b feature/new-feature
-
-# 開発・テスト
-clasp push
-# ... 動作確認 ...
-
-# mainブランチにマージ
-git checkout main
-git merge feature/new-feature
-git push origin main  # ← 自動デプロイ実行
-```
-
----
-
-## 🔧 clasp コマンド一覧
-
-### よく使うコマンド
-
-```bash
-# GASにプッシュ（ローカル→GAS）
-clasp push
-
-# GASから取得（GAS→ローカル）
-clasp pull
-
-# ブラウザでGASエディタを開く
-clasp open
-
-# デプロイの作成
-clasp deploy
-
-# ログの表示
-clasp logs
-
-# バージョン一覧
-clasp versions
-```
-
-### プロジェクト管理
-
-```bash
-# 新規プロジェクト作成
-clasp create --type standalone --title "プロジェクト名" --rootDir ./src
-
-# 既存プロジェクトのクローン
-clasp clone SCRIPT_ID --rootDir ./src
-
-# プロジェクト情報の表示
-clasp status
-```
-
----
-
-## 📚 ドキュメント
-
-### プロジェクト固有のドキュメント
-
-- `docs/context.md` - プロジェクトの要件定義書
-
-### GitHub Actions関連
-
-- `.github/workflows/README.md` - ワークフローの詳細説明
-- `.github/workflows/deploy-gas.yml` - デプロイワークフロー
-
----
-
-## 🔐 セキュリティのベストプラクティス
-
-### 機密情報の管理
-
-1. **GitHub Secrets を使用**
-   - 認証情報は必ずGitHub Secretsで管理
-   - `.clasprc.json`は絶対にコミットしない
-
-2. **Apps Script のスクリプトプロパティを使用**
-   - API キーやトークンはスクリプトプロパティで管理
-   - コード内にハードコードしない
-
-```javascript
-// Good
-const apiKey = PropertiesService.getScriptProperties().getProperty('API_KEY');
-
-// Bad
-const apiKey = 'sk-1234567890abcdef';  // ❌ ハードコード禁止
-```
-
-3. **.gitignore の確認**
-   - `.clasprc.json`が除外されていることを確認
-   - その他の機密情報も除外
-
----
-
-## 🐛 トラブルシューティング
-
-### clasp コマンドが使えない
-
-```bash
-# claspを再インストール
-npm install -g @google/clasp
-
-# ログイン状態を確認
-clasp login --status
-```
-
-### GitHub Actionsでデプロイが失敗する
-
-#### エラー: "User has not enabled the Apps Script API"
-
-https://script.google.com/home/usersettings にアクセスして「Google Apps Script API」を有効化
-
-#### エラー: "Could not find .clasp.json"
-
-以下のいずれかを実施:
-1. リポジトリに`.clasp.json`をコミット
-2. GitHub Secretsに`CLASP_JSON`を設定
-
-#### エラー: "base64: invalid input"
-
-`CLASPRC_JSON_BASE64`に改行が含まれています。以下で再取得:
-
-```bash
-cat ~/.clasprc.json | base64 | tr -d '\n'
-```
-
-### clasp push でエラーが出る
-
-```bash
-# プロジェクト設定を確認
-cat .clasp.json
-
-# rootDirが正しいか確認
-# 正しい例: "rootDir": "./src"
-
-# 再度プッシュ
-clasp push --force
-```
-
----
-
-## 🔗 参考リンク
-
-### 公式ドキュメント
-
-- [Google Apps Script 公式ドキュメント](https://developers.google.com/apps-script)
-- [clasp (Google Apps Script CLI)](https://github.com/google/clasp)
-- [GitHub Actions 公式ドキュメント](https://docs.github.com/en/actions)
-
-### ガイド
-
-- [Apps Script API 有効化](https://script.google.com/home/usersettings)
-- [clasp を使った開発ワークフロー](https://github.com/google/clasp/blob/master/docs/README.md)
-
----
-
-## 📝 ライセンス
-
-このテンプレートは自由に使用・改変できます。
-
----
-
-## 🙋 サポート
-
-質問や問題がある場合は、GitHubのIssuesで報告してください。
+MIT License
