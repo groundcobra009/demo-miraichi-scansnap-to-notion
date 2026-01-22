@@ -6,9 +6,12 @@ Google Driveのスキャンファイルをスプレッドシートで管理し�
 
 - **Google Driveフォルダの読み込み**: 指定フォルダ内のファイル一覧をスプレッドシートに展開
 - **ファイル名の同期**: スプレッドシートでファイル名を変更すると、Google Driveの実ファイル名も自動で変更
-- **Notion連携**: 選択したファイルをNotionデータベースに送信
+- **Notion連携**: 選択したファイルをNotionデータベースに送信（PDF埋め込み対応）
+- **毎日自動送信**: 毎日9時に未送信ファイルを自動でNotionに送信
+- **Discord通知**: Notionへの送信結果をDiscordに通知
 - **サイドバーUI**: 各種操作をサイドバーから簡単に実行
-- **初期設定ウィザード**: ステップバイステップで初期設定
+- **初期設定ウィザード**: ステップバイステップで初期設定（設定済み項目はスキップ可能）
+- **送信履歴管理**: 「送信履歴」シートで送信ログを管理
 
 ## スプレッドシートのカラム構成
 
@@ -55,7 +58,8 @@ clasp push
    - **ファイル一覧を再読込**: 全件再取得
    - **全選択/選択解除**: チェックボックスの一括操作
    - **選択ファイルをNotionに送信**: チェックしたファイルをNotionに送信
-   - **トリガー設定**: ファイル名同期の有効/無効切り替え
+   - **トリガー設定**: ファイル名同期・毎日自動送信の有効/無効切り替え
+   - **Discord通知設定**: Webhook URLの設定・テスト送信
 
 ### メニューから操作
 
@@ -109,10 +113,23 @@ src/
 
 | 関数名 | 説明 |
 |-------|------|
-| `isTriggerEnabled()` | トリガーが有効か確認 |
+| `isTriggerEnabled()` | ファイル名同期トリガーが有効か確認 |
 | `enableEditTrigger()` | ファイル名同期トリガーを有効化 |
 | `disableEditTrigger()` | ファイル名同期トリガーを無効化 |
 | `onEditInstallable()` | 編集時のトリガーハンドラー |
+| `isDailyTriggerEnabled()` | 毎日自動送信トリガーが有効か確認 |
+| `enableDailyTrigger()` | 毎日自動送信トリガーを有効化 |
+| `disableDailyTrigger()` | 毎日自動送信トリガーを無効化 |
+| `dailyAutoSend()` | 毎日自動送信の実行（トリガーから呼び出し） |
+
+### Discord通知
+
+| 関数名 | 説明 |
+|-------|------|
+| `saveDiscordWebhookUrl()` | Discord Webhook URLを保存 |
+| `isDiscordEnabled()` | Discord通知が有効か確認 |
+| `sendDiscordNotification()` | Discordに通知を送信 |
+| `testDiscordNotification()` | Discord通知のテスト送信 |
 
 ## 注意事項
 

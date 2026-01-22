@@ -365,7 +365,7 @@
       <div class="section-title">トリガー設定</div>
       <div class="toggle-row">
         <div class="toggle-label">
-          <div class="title">ファイル名同期トリガー</div>
+          <div class="title">ファイル名同期</div>
           <div class="desc">スプレッドシートの変更をDriveに反映</div>
         </div>
         <label class="toggle-switch">
@@ -373,8 +373,35 @@
           <span class="toggle-slider"></span>
         </label>
       </div>
-      <div style="margin-top: 8px;">
+      <div class="toggle-row">
+        <div class="toggle-label">
+          <div class="title">毎日自動送信</div>
+          <div class="desc">毎日9時に未送信ファイルをNotionに送信</div>
+        </div>
+        <label class="toggle-switch">
+          <input type="checkbox" id="dailyTriggerToggle" onchange="toggleDailyTrigger()">
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+      <div style="margin-top: 8px; display: flex; gap: 8px;">
         <span class="status-badge" id="triggerStatus">確認中...</span>
+        <span class="status-badge" id="dailyTriggerStatus">確認中...</span>
+      </div>
+    </div>
+
+    <!-- Discord Settings -->
+    <div class="section">
+      <div class="section-title">Discord通知</div>
+      <div class="toggle-row" style="border-bottom: none; padding-bottom: 8px;">
+        <div class="toggle-label">
+          <div class="title">通知設定</div>
+          <div class="desc" id="discordStatus">確認中...</div>
+        </div>
+      </div>
+      <input type="text" id="discordWebhookInput" placeholder="Webhook URLを入力" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px; margin-bottom: 8px;">
+      <div style="display: flex; gap: 8px;">
+        <button class="btn btn-small btn-outline" onclick="saveDiscordWebhook()" style="flex: 1;">保存</button>
+        <button class="btn btn-small btn-outline" onclick="testDiscord()" style="flex: 1;">テスト送信</button>
       </div>
     </div>
 
@@ -412,6 +439,8 @@
     document.addEventListener('DOMContentLoaded', function() {
       updateStats();
       checkTriggerStatus();
+      checkDailyTriggerStatus();
+      checkDiscordStatus();
       // 定期的に統計情報を更新
       setInterval(updateStats, 5000);
     });
@@ -627,6 +656,7 @@
             'Notion Integration Key: ' + settings.notionIntegrationKey + '\n' +
             'Notion Parent ID: ' + (settings.notionParentId || '未設定') + '\n' +
             'Notion Database ID: ' + (settings.notionDatabaseId || '未作成') + '\n' +
+            'Discord Webhook: ' + settings.discordWebhookUrl + '\n' +
             'セットアップ完了: ' + (settings.isSetupComplete ? 'はい' : 'いいえ')
           );
         })
@@ -674,6 +704,149 @@
       hideLoading();
       showToast('エラー: ' + error.message, 'error');
       console.error(error);
+    }
+
+    // ========================================
+    // 毎日自動送信トリガー
+    // ========================================
+
+    function checkDailyTriggerStatus() {
+      google.script.run
+        .withSuccessHandler(function(isEnabled) {
+          document.getElementById('dailyTriggerToggle').checked = isEnabled;
+          updateDailyTriggerStatusBadge(isEnabled);
+        })
+        .withFailureHandler(function(error) {
+          console.error('Daily trigger check error:', error);
+          updateDailyTriggerStatusBadge(false);
+        })
+        .isDailyTriggerEnabled();
+    }
+
+    function toggleDailyTrigger() {
+      const checkbox = document.getElementById('dailyTriggerToggle');
+      const isEnabled = checkbox.checked;
+
+      showLoading(isEnabled ? '自動送信を有効化中...' : '自動送信を無効化中...');
+
+      if (isEnabled) {
+        google.script.run
+          .withSuccessHandler(function(result) {
+            hideLoading();
+            if (result.success) {
+              showToast('毎日自動送信を有効化しました', 'success');
+              updateDailyTriggerStatusBadge(true);
+            } else {
+              checkbox.checked = false;
+              showToast('エラー: ' + result.error, 'error');
+              updateDailyTriggerStatusBadge(false);
+            }
+          })
+          .withFailureHandler(function(error) {
+            hideLoading();
+            checkbox.checked = false;
+            handleError(error);
+            updateDailyTriggerStatusBadge(false);
+          })
+          .enableDailyTrigger();
+      } else {
+        google.script.run
+          .withSuccessHandler(function(result) {
+            hideLoading();
+            if (result.success) {
+              showToast('毎日自動送信を無効化しました', 'success');
+              updateDailyTriggerStatusBadge(false);
+            } else {
+              checkbox.checked = true;
+              showToast('エラー: ' + result.error, 'error');
+              updateDailyTriggerStatusBadge(true);
+            }
+          })
+          .withFailureHandler(function(error) {
+            hideLoading();
+            checkbox.checked = true;
+            handleError(error);
+            updateDailyTriggerStatusBadge(true);
+          })
+          .disableDailyTrigger();
+      }
+    }
+
+    function updateDailyTriggerStatusBadge(isEnabled) {
+      const badge = document.getElementById('dailyTriggerStatus');
+      if (isEnabled) {
+        badge.className = 'status-badge active';
+        badge.textContent = '自動送信:有効';
+      } else {
+        badge.className = 'status-badge inactive';
+        badge.textContent = '自動送信:無効';
+      }
+    }
+
+    // ========================================
+    // Discord通知
+    // ========================================
+
+    function checkDiscordStatus() {
+      google.script.run
+        .withSuccessHandler(function(isEnabled) {
+          const statusEl = document.getElementById('discordStatus');
+          if (isEnabled) {
+            statusEl.textContent = '設定済み';
+            statusEl.style.color = '#137333';
+          } else {
+            statusEl.textContent = '未設定';
+            statusEl.style.color = '#c5221f';
+          }
+        })
+        .withFailureHandler(function(error) {
+          console.error('Discord check error:', error);
+        })
+        .isDiscordEnabled();
+    }
+
+    function saveDiscordWebhook() {
+      const url = document.getElementById('discordWebhookInput').value.trim();
+
+      if (!url) {
+        showToast('Webhook URLを入力してください', 'error');
+        return;
+      }
+
+      if (!url.startsWith('https://discord.com/api/webhooks/') && !url.startsWith('https://discordapp.com/api/webhooks/')) {
+        showToast('有効なDiscord Webhook URLを入力してください', 'error');
+        return;
+      }
+
+      showLoading('保存中...');
+      google.script.run
+        .withSuccessHandler(function(result) {
+          hideLoading();
+          if (result.success) {
+            showToast('Discord Webhook URLを保存しました', 'success');
+            document.getElementById('discordWebhookInput').value = '';
+            checkDiscordStatus();
+          } else {
+            showToast('エラー: ' + result.error, 'error');
+          }
+        })
+        .withFailureHandler(handleError)
+        .saveDiscordWebhookUrl(url);
+    }
+
+    function testDiscord() {
+      showLoading('テスト通知を送信中...');
+      google.script.run
+        .withSuccessHandler(function(result) {
+          hideLoading();
+          if (result.success) {
+            showToast('テスト通知を送信しました', 'success');
+          } else {
+            showToast('エラー: ' + result.error, 'error');
+          }
+        })
+        .withFailureHandler(handleError)
+        .testDiscordNotification();
     }
   </script>
 </body>

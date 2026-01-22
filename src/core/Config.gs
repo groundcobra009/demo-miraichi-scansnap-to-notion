@@ -12,7 +12,8 @@ const PROPERTY_KEYS = {
   NOTION_INTEGRATION_KEY: 'notionIntegrationKey',
   NOTION_PARENT_ID: 'notionParentId',
   NOTION_DATABASE_ID: 'notionDatabaseId',
-  IS_SETUP_COMPLETE: 'isSetupComplete'
+  IS_SETUP_COMPLETE: 'isSetupComplete',
+  DISCORD_WEBHOOK_URL: 'discordWebhookUrl'
 };
 
 const SHEET_HEADERS = [
@@ -152,9 +153,25 @@ function validateSetup() {
 function getCurrentSettings() {
   return {
     driveFolderId: getConfig(PROPERTY_KEYS.DRIVE_FOLDER_ID) || '',
-    notionIntegrationKey: getConfig(PROPERTY_KEYS.NOTION_INTEGRATION_KEY) ? '設定済み' : '未設定',
+    notionIntegrationKey: getConfig(PROPERTY_KEYS.NOTION_INTEGRATION_KEY) ? '********' : '未設定',
     notionParentId: getConfig(PROPERTY_KEYS.NOTION_PARENT_ID) || '',
     notionDatabaseId: getConfig(PROPERTY_KEYS.NOTION_DATABASE_ID) || '',
+    discordWebhookUrl: getConfig(PROPERTY_KEYS.DISCORD_WEBHOOK_URL) ? '********' : '未設定',
     isSetupComplete: isSetupComplete()
+  };
+}
+
+/**
+ * 設定が存在するか確認（ウィザード用）
+ * @returns {Object} - 各設定の存在有無
+ */
+function getSetupStatus() {
+  return {
+    hasDriveFolderId: !!getConfig(PROPERTY_KEYS.DRIVE_FOLDER_ID),
+    hasNotionIntegrationKey: !!getConfig(PROPERTY_KEYS.NOTION_INTEGRATION_KEY),
+    hasNotionParentId: !!getConfig(PROPERTY_KEYS.NOTION_PARENT_ID),
+    hasNotionDatabaseId: !!getConfig(PROPERTY_KEYS.NOTION_DATABASE_ID),
+    driveFolderId: getConfig(PROPERTY_KEYS.DRIVE_FOLDER_ID) || '',
+    notionParentId: getConfig(PROPERTY_KEYS.NOTION_PARENT_ID) || ''
   };
 }

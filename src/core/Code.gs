@@ -68,9 +68,18 @@ function showSetupWizard() {
  */
 function saveSetupSettings(settings) {
   try {
-    setConfig(PROPERTY_KEYS.DRIVE_FOLDER_ID, settings.driveFolderId);
-    setConfig(PROPERTY_KEYS.NOTION_INTEGRATION_KEY, settings.notionIntegrationKey);
-    setConfig(PROPERTY_KEYS.NOTION_PARENT_ID, settings.notionParentId);
+    if (settings.driveFolderId) {
+      setConfig(PROPERTY_KEYS.DRIVE_FOLDER_ID, settings.driveFolderId);
+    }
+
+    // Integration Keyは既存値を保持するフラグがない場合のみ更新
+    if (!settings.keepExistingNotionKey && settings.notionIntegrationKey) {
+      setConfig(PROPERTY_KEYS.NOTION_INTEGRATION_KEY, settings.notionIntegrationKey);
+    }
+
+    if (settings.notionParentId) {
+      setConfig(PROPERTY_KEYS.NOTION_PARENT_ID, settings.notionParentId);
+    }
 
     return { success: true };
   } catch (error) {
@@ -229,8 +238,10 @@ function menuShowSettings() {
     `Notion Integration Key: ${settings.notionIntegrationKey}\n` +
     `Notion Parent ID: ${settings.notionParentId || '未設定'}\n` +
     `Notion Database ID: ${settings.notionDatabaseId || '未作成'}\n` +
+    `Discord Webhook: ${settings.discordWebhookUrl}\n` +
     `セットアップ完了: ${settings.isSetupComplete ? 'はい' : 'いいえ'}\n` +
-    `ファイル名同期トリガー: ${isTriggerEnabled() ? '有効' : '無効'}`,
+    `ファイル名同期トリガー: ${isTriggerEnabled() ? '有効' : '無効'}\n` +
+    `毎日自動送信トリガー: ${isDailyTriggerEnabled() ? '有効' : '無効'}`,
     ui.ButtonSet.OK
   );
 }
@@ -279,6 +290,7 @@ function checkSetup() {
 // ========================================
 
 const TRIGGER_FUNCTION_NAME = 'onEditInstallable';
+const DAILY_TRIGGER_FUNCTION_NAME = 'dailyAutoSend';
 
 /**
  * トリガーが有効かどうかを確認
@@ -357,6 +369,241 @@ function menuDisableTrigger() {
   } else {
     ui.alert('エラー', 'トリガーの無効化に失敗しました: ' + result.error, ui.ButtonSet.OK);
   }
+}
+
+// ========================================
+// 毎日自動送信トリガー
+// ========================================
+
+/**
+ * 毎日自動送信トリガーが有効かどうかを確認
+ * @returns {boolean}
+ */
+function isDailyTriggerEnabled() {
+  const triggers = ScriptApp.getProjectTriggers();
+  return triggers.some(trigger => trigger.getHandlerFunction() === DAILY_TRIGGER_FUNCTION_NAME);
+}
+
+/**
+ * 毎日自動送信トリガーを有効化
+ * @returns {Object} - 結果
+ */
+function enableDailyTrigger() {
+  try {
+    // 既に有効な場合は何もしない
+    if (isDailyTriggerEnabled()) {
+      return { success: true, message: 'トリガーは既に有効です' };
+    }
+
+    // 毎日午前9時に実行するトリガーを作成
+    ScriptApp.newTrigger(DAILY_TRIGGER_FUNCTION_NAME)
+      .timeBased()
+      .everyDays(1)
+      .atHour(9)
+      .create();
+
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * 毎日自動送信トリガーを無効化
+ * @returns {Object} - 結果
+ */
+function disableDailyTrigger() {
+  try {
+    const triggers = ScriptApp.getProjectTriggers();
+    for (const trigger of triggers) {
+      if (trigger.getHandlerFunction() === DAILY_TRIGGER_FUNCTION_NAME) {
+        ScriptApp.deleteTrigger(trigger);
+      }
+    }
+
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * 毎日自動送信の実行（トリガーから呼び出し）
+ */
+function dailyAutoSend() {
+  try {
+    // セットアップが完了していない場合は終了
+    if (!isSetupComplete()) {
+      console.log('dailyAutoSend: セットアップが完了していません');
+      return;
+    }
+
+    // ファイル一覧を更新
+    const refreshResult = refreshDriveFiles();
+    if (!refreshResult.success) {
+      console.error('dailyAutoSend: ファイル更新エラー', refreshResult.error);
+      sendDiscordNotification('❌ 自動送信エラー', 'ファイル一覧の更新に失敗しました: ' + refreshResult.error);
+      return;
+    }
+
+    // 未送信ファイルを取得
+    const unsentFiles = getUnsentFiles();
+
+    if (unsentFiles.length === 0) {
+      console.log('dailyAutoSend: 送信するファイルがありません');
+      return;
+    }
+
+    // Notionに送信
+    const sendResult = sendFilesToNotion(unsentFiles);
+
+    // Discord通知を送信
+    const message = `📄 **送信完了**\n` +
+      `成功: ${sendResult.success}件\n` +
+      `失敗: ${sendResult.failed}件`;
+
+    if (sendResult.errors.length > 0) {
+      const errorDetails = sendResult.errors.map(e => `• ${e.fileName}: ${e.error}`).join('\n');
+      sendDiscordNotification('📤 Notion自動送信結果', message + '\n\n**エラー詳細:**\n' + errorDetails);
+    } else {
+      sendDiscordNotification('📤 Notion自動送信結果', message);
+    }
+
+    console.log('dailyAutoSend: 完了', sendResult);
+  } catch (error) {
+    console.error('dailyAutoSend error:', error);
+    sendDiscordNotification('❌ 自動送信エラー', 'エラーが発生しました: ' + error.message);
+  }
+}
+
+/**
+ * 未送信ファイルを取得
+ * @returns {Array} - 未送信ファイルの配列
+ */
+function getUnsentFiles() {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('ファイル一覧');
+  if (!sheet) return [];
+
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return [];
+
+  const sentFileIds = getSentFileIds();
+  const dataRange = sheet.getRange(2, 1, lastRow - 1, SHEET_HEADERS.length);
+  const data = dataRange.getValues();
+
+  const unsentFiles = [];
+
+  for (let i = 0; i < data.length; i++) {
+    const rowData = data[i];
+    const fileId = rowData[1]; // ID列
+
+    if (!fileId || sentFileIds.has(fileId)) continue;
+
+    unsentFiles.push({
+      row: i + 2,
+      fileId: fileId,
+      fileName: rowData[2], // ファイル名列
+      mimeType: rowData[5], // MIME Type列
+      size: rowData[4], // 容量列
+      url: rowData[6], // リンク先列
+      createdTime: rowData[7] ? Utilities.formatDate(new Date(rowData[7]), Session.getScriptTimeZone(), "yyyy-MM-dd'T'HH:mm:ss'+09:00'") : null,
+      updatedTime: rowData[8] ? Utilities.formatDate(new Date(rowData[8]), Session.getScriptTimeZone(), "yyyy-MM-dd'T'HH:mm:ss'+09:00'") : null,
+      notionSent: false
+    });
+  }
+
+  return unsentFiles;
+}
+
+// ========================================
+// Discord通知
+// ========================================
+
+/**
+ * Discord Webhook URLを保存
+ * @param {string} url - Webhook URL
+ * @returns {Object} - 保存結果
+ */
+function saveDiscordWebhookUrl(url) {
+  try {
+    setConfig(PROPERTY_KEYS.DISCORD_WEBHOOK_URL, url);
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * Discord Webhook URLを取得
+ * @returns {string|null}
+ */
+function getDiscordWebhookUrl() {
+  return getConfig(PROPERTY_KEYS.DISCORD_WEBHOOK_URL);
+}
+
+/**
+ * Discord Webhook URLが設定されているか確認
+ * @returns {boolean}
+ */
+function isDiscordEnabled() {
+  const url = getDiscordWebhookUrl();
+  return url && url.length > 0;
+}
+
+/**
+ * Discordに通知を送信
+ * @param {string} title - 通知タイトル
+ * @param {string} message - 通知メッセージ
+ * @returns {Object} - 送信結果
+ */
+function sendDiscordNotification(title, message) {
+  const webhookUrl = getDiscordWebhookUrl();
+
+  if (!webhookUrl) {
+    console.log('Discord Webhook URLが設定されていません');
+    return { success: false, error: 'Discord Webhook URLが設定されていません' };
+  }
+
+  try {
+    const payload = {
+      embeds: [{
+        title: title,
+        description: message,
+        color: 5814783, // Notionの紫色
+        timestamp: new Date().toISOString(),
+        footer: {
+          text: 'ScanSnap to Notion'
+        }
+      }]
+    };
+
+    const options = {
+      method: 'POST',
+      contentType: 'application/json',
+      payload: JSON.stringify(payload),
+      muteHttpExceptions: true
+    };
+
+    const response = UrlFetchApp.fetch(webhookUrl, options);
+    const responseCode = response.getResponseCode();
+
+    if (responseCode >= 200 && responseCode < 300) {
+      return { success: true };
+    } else {
+      return { success: false, error: 'Discord API Error: ' + responseCode };
+    }
+  } catch (error) {
+    console.error('Discord notification error:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * Discord通知テスト
+ * @returns {Object} - テスト結果
+ */
+function testDiscordNotification() {
+  return sendDiscordNotification('🔔 テスト通知', 'ScanSnap to Notionからのテスト通知です。');
 }
 
 // ========================================

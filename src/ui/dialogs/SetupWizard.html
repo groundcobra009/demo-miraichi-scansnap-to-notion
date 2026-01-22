@@ -187,6 +187,24 @@
       text-align: center;
       margin-bottom: 20px;
     }
+    .configured-badge {
+      display: inline-block;
+      background: #e6f4ea;
+      color: #137333;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      margin-left: 8px;
+    }
+    .skip-hint {
+      background: #e8f0fe;
+      color: #1967d2;
+      padding: 10px;
+      border-radius: 4px;
+      font-size: 12px;
+      margin-bottom: 15px;
+    }
   </style>
 </head>
 <body>
@@ -207,7 +225,10 @@
 
       <!-- Step 1: Google Drive -->
       <div class="step-content active" id="step-1">
-        <div class="step-title">Step 1: Google Driveフォルダ設定</div>
+        <div class="step-title">Step 1: Google Driveフォルダ設定<span class="configured-badge" id="step1-badge" style="display: none;">設定済み</span></div>
+        <div class="skip-hint" id="step1-skip-hint" style="display: none;">
+          既に設定されています。変更しない場合はそのまま「次へ」を押してください。
+        </div>
         <div class="step-description">
           スキャンしたファイルが保存されているGoogle DriveフォルダのIDを入力してください。
         </div>
@@ -223,7 +244,10 @@
 
       <!-- Step 2: Notion Integration Key -->
       <div class="step-content" id="step-2">
-        <div class="step-title">Step 2: Notion Integration設定</div>
+        <div class="step-title">Step 2: Notion Integration設定<span class="configured-badge" id="step2-badge" style="display: none;">設定済み</span></div>
+        <div class="skip-hint" id="step2-skip-hint" style="display: none;">
+          既に設定されています。変更しない場合はそのまま「次へ」を押してください。
+        </div>
         <div class="step-description">
           Notion APIを使用するためのIntegration Keyを入力してください。
         </div>
@@ -238,7 +262,10 @@
 
       <!-- Step 3: Notion Parent ID -->
       <div class="step-content" id="step-3">
-        <div class="step-title">Step 3: Notionデータベース作成先</div>
+        <div class="step-title">Step 3: Notionデータベース作成先<span class="configured-badge" id="step3-badge" style="display: none;">設定済み</span></div>
+        <div class="skip-hint" id="step3-skip-hint" style="display: none;">
+          既に設定されています。変更しない場合はそのまま「次へ」を押してください。
+        </div>
         <div class="step-description">
           データベースを作成するNotionページのIDを入力してください。
         </div>
@@ -282,6 +309,14 @@
   <script>
     let currentStep = 1;
     const totalSteps = 4;
+    let setupStatus = {
+      hasDriveFolderId: false,
+      hasNotionIntegrationKey: false,
+      hasNotionParentId: false,
+      hasNotionDatabaseId: false,
+      driveFolderId: '',
+      notionParentId: ''
+    };
 
     function showStep(step) {
       // Hide all steps
@@ -335,21 +370,24 @@
       switch(step) {
         case 1:
           const driveFolderId = document.getElementById('driveFolderId').value.trim();
-          if (!driveFolderId) {
+          // 既に設定済みの場合は空でもOK
+          if (!driveFolderId && !setupStatus.hasDriveFolderId) {
             showMessage('Google DriveフォルダIDを入力してください', 'error');
             return false;
           }
           return true;
         case 2:
           const notionKey = document.getElementById('notionIntegrationKey').value.trim();
-          if (!notionKey) {
+          // 既に設定済みの場合は空でもOK
+          if (!notionKey && !setupStatus.hasNotionIntegrationKey) {
             showMessage('Notion Integration Keyを入力してください', 'error');
             return false;
           }
           return true;
         case 3:
           const notionParentId = document.getElementById('notionParentId').value.trim();
-          if (!notionParentId) {
+          // 既に設定済みの場合は空でもOK
+          if (!notionParentId && !setupStatus.hasNotionParentId) {
             showMessage('Notion Parent IDを入力してください', 'error');
             return false;
           }
@@ -406,47 +444,45 @@
     function completeSetup() {
       showLoading('設定を保存しています...');
 
+      // 新しい値がある場合のみ設定を更新
+      const newDriveFolderId = document.getElementById('driveFolderId').value.trim();
+      const newNotionKey = document.getElementById('notionIntegrationKey').value.trim();
+      const newNotionParentId = document.getElementById('notionParentId').value.trim();
+
       const settings = {
-        driveFolderId: document.getElementById('driveFolderId').value.trim(),
-        notionIntegrationKey: document.getElementById('notionIntegrationKey').value.trim(),
-        notionParentId: document.getElementById('notionParentId').value.trim()
+        driveFolderId: newDriveFolderId || setupStatus.driveFolderId,
+        notionIntegrationKey: newNotionKey, // 空の場合は既存の値を保持（サーバー側で処理）
+        notionParentId: newNotionParentId || setupStatus.notionParentId
       };
+
+      // Integration Keyは入力がない場合、既存の値を使用するフラグ
+      settings.keepExistingNotionKey = !newNotionKey && setupStatus.hasNotionIntegrationKey;
 
       google.script.run
         .withSuccessHandler(function(result) {
           if (result.success) {
-            showLoading('Notionデータベースを作成しています...');
-            google.script.run
-              .withSuccessHandler(function(dbResult) {
-                if (dbResult.success) {
-                  showLoading('Google Driveフォルダを読み込んでいます...');
-                  google.script.run
-                    .withSuccessHandler(function(driveResult) {
-                      hideLoading();
-                      if (driveResult.success) {
-                        showMessage('設定が完了しました！ ' + driveResult.fileCount + '件のファイルを読み込みました。', 'success');
-                        setTimeout(function() {
-                          google.script.host.close();
-                        }, 2000);
-                      } else {
-                        showMessage('Google Driveの読み込みに失敗: ' + driveResult.error, 'error');
-                      }
-                    })
-                    .withFailureHandler(function(error) {
-                      hideLoading();
-                      showMessage('エラー: ' + error.message, 'error');
-                    })
-                    .loadDriveFilesToSheet();
-                } else {
+            // データベースが既に存在する場合はスキップ
+            if (setupStatus.hasNotionDatabaseId) {
+              showLoading('Google Driveフォルダを読み込んでいます...');
+              loadDriveFiles();
+            } else {
+              showLoading('Notionデータベースを作成しています...');
+              google.script.run
+                .withSuccessHandler(function(dbResult) {
+                  if (dbResult.success) {
+                    showLoading('Google Driveフォルダを読み込んでいます...');
+                    loadDriveFiles();
+                  } else {
+                    hideLoading();
+                    showMessage('Notionデータベースの作成に失敗: ' + dbResult.error, 'error');
+                  }
+                })
+                .withFailureHandler(function(error) {
                   hideLoading();
-                  showMessage('Notionデータベースの作成に失敗: ' + dbResult.error, 'error');
-                }
-              })
-              .withFailureHandler(function(error) {
-                hideLoading();
-                showMessage('エラー: ' + error.message, 'error');
-              })
-              .createNotionDatabase();
+                  showMessage('エラー: ' + error.message, 'error');
+                })
+                .createNotionDatabase();
+            }
           } else {
             hideLoading();
             showMessage('設定の保存に失敗: ' + result.error, 'error');
@@ -459,17 +495,53 @@
         .saveSetupSettings(settings);
     }
 
-    // Load existing settings on open
+    function loadDriveFiles() {
+      google.script.run
+        .withSuccessHandler(function(driveResult) {
+          hideLoading();
+          if (driveResult.success) {
+            showMessage('設定が完了しました！ ' + driveResult.fileCount + '件のファイルを読み込みました。', 'success');
+            setTimeout(function() {
+              google.script.host.close();
+            }, 2000);
+          } else {
+            showMessage('Google Driveの読み込みに失敗: ' + driveResult.error, 'error');
+          }
+        })
+        .withFailureHandler(function(error) {
+          hideLoading();
+          showMessage('エラー: ' + error.message, 'error');
+        })
+        .loadDriveFilesToSheet();
+    }
+
+    // Load existing settings and setup status on open
     google.script.run
-      .withSuccessHandler(function(settings) {
-        if (settings.driveFolderId) {
-          document.getElementById('driveFolderId').value = settings.driveFolderId;
+      .withSuccessHandler(function(status) {
+        setupStatus = status;
+
+        // Step 1: Google Drive folder
+        if (status.hasDriveFolderId) {
+          document.getElementById('driveFolderId').value = status.driveFolderId;
+          document.getElementById('step1-badge').style.display = 'inline-block';
+          document.getElementById('step1-skip-hint').style.display = 'block';
         }
-        if (settings.notionParentId) {
-          document.getElementById('notionParentId').value = settings.notionParentId;
+
+        // Step 2: Notion Integration Key
+        if (status.hasNotionIntegrationKey) {
+          document.getElementById('notionIntegrationKey').placeholder = '********（設定済み - 変更する場合のみ入力）';
+          document.getElementById('step2-badge').style.display = 'inline-block';
+          document.getElementById('step2-skip-hint').style.display = 'block';
+        }
+
+        // Step 3: Notion Parent ID
+        if (status.hasNotionParentId) {
+          document.getElementById('notionParentId').value = status.notionParentId;
+          document.getElementById('step3-badge').style.display = 'inline-block';
+          document.getElementById('step3-skip-hint').style.display = 'block';
         }
       })
-      .getCurrentSettings();
+      .getSetupStatus();
   </script>
 </body>
 </html>
